@@ -32,17 +32,34 @@ func RegisterLLMJSONCallbacks(registry map[string]func(ctx context.Context,
 		}
 
 		client := NewLLMClient(conn)
-		resp, err := client.AnalyzeNode(ctx, req)
+		stream, err := client.AnalyzeNode(ctx, req)
 		if err != nil {
 			callback("", err)
 			return
 		}
 
-		respBytes, err := marshaler.Marshal(resp)
-		if err != nil {
-			callback("", err)
-			return
-		}
-		callback(string(respBytes), nil)
+		go func() {
+			for {
+				select {
+				case <-stream.Context().Done():
+					callback("", stream.Context().Err())
+					return
+				default:
+				}
+
+				resp, err := stream.Recv()
+				if err != nil {
+					callback("", err)
+					return
+				}
+
+				respBytes, err := marshaler.Marshal(resp)
+				if err != nil {
+					callback("", err)
+					return
+				}
+				callback(string(respBytes), nil)
+			}
+		}()
 	}
 }

@@ -22,9 +22,18 @@
         "operationId": "LLM_AnalyzeNode",
         "responses": {
           "200": {
-            "description": "A successful response.",
+            "description": "A successful response.(streaming responses)",
             "schema": {
-              "$ref": "#/definitions/litrpcAnalyzeNodeResponse"
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/litrpcAnalyzeNodeResponse"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of litrpcAnalyzeNodeResponse"
             }
           },
           "default": {
@@ -48,6 +57,47 @@
           "LLM"
         ]
       }
+    },
+    "/v1/llm/analyze/stream": {
+      "post": {
+        "summary": "AnalyzeNode performs LLM analysis on the node's current state.",
+        "operationId": "LLM_AnalyzeNode2",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/litrpcAnalyzeNodeResponse"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of litrpcAnalyzeNodeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "description": "query is the natural language query to analyze the node data.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "LLM"
+        ]
+      }
     }
   },
   "definitions": {
@@ -65,7 +115,11 @@
       "properties": {
         "analysis": {
           "type": "string",
-          "description": "analysis contains the natural language analysis response."
+          "description": "analysis contains the natural language analysis response chunk."
+        },
+        "done": {
+          "type": "boolean",
+          "description": "done indicates if this is the final chunk of the response."
         }
       }
     },

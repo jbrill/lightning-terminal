@@ -7,7 +7,7 @@ option go_package = "github.com/lightninglabs/lightning-terminal/litrpc";
 // LLMService exposes endpoints for LLM-based node analysis.
 service LLM {
     // AnalyzeNode performs LLM analysis on the node's current state.
-    rpc AnalyzeNode (AnalyzeNodeRequest) returns (AnalyzeNodeResponse);
+    rpc AnalyzeNode (AnalyzeNodeRequest) returns (stream AnalyzeNodeResponse);
 }
 
 message AnalyzeNodeRequest {
@@ -16,6 +16,9 @@ message AnalyzeNodeRequest {
 }
 
 message AnalyzeNodeResponse {
-    // analysis contains the natural language analysis response.
+    // analysis contains the natural language analysis response chunk.
     string analysis = 1;
+
+    // done indicates if this is the final chunk of the response.
+    bool done = 2;
 }

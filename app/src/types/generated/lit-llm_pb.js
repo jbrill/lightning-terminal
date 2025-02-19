@@ -230,7 +230,8 @@ proto.litrpc.AnalyzeNodeResponse.prototype.toObject = function(opt_includeInstan
  */
 proto.litrpc.AnalyzeNodeResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    analysis: jspb.Message.getFieldWithDefault(msg, 1, "")
+    analysis: jspb.Message.getFieldWithDefault(msg, 1, ""),
+    done: jspb.Message.getBooleanFieldWithDefault(msg, 2, false)
   };
 
   if (includeInstance) {
@@ -271,6 +272,10 @@ proto.litrpc.AnalyzeNodeResponse.deserializeBinaryFromReader = function(msg, rea
       var value = /** @type {string} */ (reader.readString());
       msg.setAnalysis(value);
       break;
+    case 2:
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setDone(value);
+      break;
     default:
       reader.skipField();
       break;
@@ -307,6 +312,13 @@ proto.litrpc.AnalyzeNodeResponse.serializeBinaryToWriter = function(message, wri
       f
     );
   }
+  f = message.getDone();
+  if (f) {
+    writer.writeBool(
+      2,
+      f
+    );
+  }
 };
 
 
@@ -325,6 +337,24 @@ proto.litrpc.AnalyzeNodeResponse.prototype.getAnalysis = function() {
  */
 proto.litrpc.AnalyzeNodeResponse.prototype.setAnalysis = function(value) {
   return jspb.Message.setProto3StringField(this, 1, value);
+};
+
+
+/**
+ * optional bool done = 2;
+ * @return {boolean}
+ */
+proto.litrpc.AnalyzeNodeResponse.prototype.getDone = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 2, false));
+};
+
+
+/**
+ * @param {boolean} value
+ * @return {!proto.litrpc.AnalyzeNodeResponse} returns this
+ */
+proto.litrpc.AnalyzeNodeResponse.prototype.setDone = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 2, value);
 };
 
 

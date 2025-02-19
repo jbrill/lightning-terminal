@@ -19,7 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LLMClient interface {
 	// AnalyzeNode performs LLM analysis on the node's current state.
-	AnalyzeNode(ctx context.Context, in *AnalyzeNodeRequest, opts ...grpc.CallOption) (*AnalyzeNodeResponse, error)
+	AnalyzeNode(ctx context.Context, in *AnalyzeNodeRequest, opts ...grpc.CallOption) (LLM_AnalyzeNodeClient, error)
 }
 
 type lLMClient struct {
@@ -30,13 +30,36 @@ func NewLLMClient(cc grpc.ClientConnInterface) LLMClient {
 	return &lLMClient{cc}
 }
 
-func (c *lLMClient) AnalyzeNode(ctx context.Context, in *AnalyzeNodeRequest, opts ...grpc.CallOption) (*AnalyzeNodeResponse, error) {
-	out := new(AnalyzeNodeResponse)
-	err := c.cc.Invoke(ctx, "/litrpc.LLM/AnalyzeNode", in, out, opts...)
+func (c *lLMClient) AnalyzeNode(ctx context.Context, in *AnalyzeNodeRequest, opts ...grpc.CallOption) (LLM_AnalyzeNodeClient, error) {
+	stream, err := c.cc.NewStream(ctx, &LLM_ServiceDesc.Streams[0], "/litrpc.LLM/AnalyzeNode", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &lLMAnalyzeNodeClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type LLM_AnalyzeNodeClient interface {
+	Recv() (*AnalyzeNodeResponse, error)
+	grpc.ClientStream
+}
+
+type lLMAnalyzeNodeClient struct {
+	grpc.ClientStream
+}
+
+func (x *lLMAnalyzeNodeClient) Recv() (*AnalyzeNodeResponse, error) {
+	m := new(AnalyzeNodeResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // LLMServer is the server API for LLM service.
@@ -44,7 +67,7 @@ func (c *lLMClient) AnalyzeNode(ctx context.Context, in *AnalyzeNodeRequest, opt
 // for forward compatibility
 type LLMServer interface {
 	// AnalyzeNode performs LLM analysis on the node's current state.
-	AnalyzeNode(context.Context, *AnalyzeNodeRequest) (*AnalyzeNodeResponse, error)
+	AnalyzeNode(*AnalyzeNodeRequest, LLM_AnalyzeNodeServer) error
 	mustEmbedUnimplementedLLMServer()
 }
 
@@ -52,8 +75,8 @@ type LLMServer interface {
 type UnimplementedLLMServer struct {
 }
 
-func (UnimplementedLLMServer) AnalyzeNode(context.Context, *AnalyzeNodeRequest) (*AnalyzeNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method AnalyzeNode not implemented")
+func (UnimplementedLLMServer) AnalyzeNode(*AnalyzeNodeRequest, LLM_AnalyzeNodeServer) error {
+	return status.Errorf(codes.Unimplemented, "method AnalyzeNode not implemented")
 }
 func (UnimplementedLLMServer) mustEmbedUnimplementedLLMServer() {}
 
@@ -68,22 +91,25 @@ func RegisterLLMServer(s grpc.ServiceRegistrar, srv LLMServer) {
 	s.RegisterService(&LLM_ServiceDesc, srv)
 }
 
-func _LLM_AnalyzeNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AnalyzeNodeRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _LLM_AnalyzeNode_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(AnalyzeNodeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(LLMServer).AnalyzeNode(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/litrpc.LLM/AnalyzeNode",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMServer).AnalyzeNode(ctx, req.(*AnalyzeNodeRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(LLMServer).AnalyzeNode(m, &lLMAnalyzeNodeServer{stream})
+}
+
+type LLM_AnalyzeNodeServer interface {
+	Send(*AnalyzeNodeResponse) error
+	grpc.ServerStream
+}
+
+type lLMAnalyzeNodeServer struct {
+	grpc.ServerStream
+}
+
+func (x *lLMAnalyzeNodeServer) Send(m *AnalyzeNodeResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 // LLM_ServiceDesc is the grpc.ServiceDesc for LLM service.
@@ -92,12 +118,13 @@ func _LLM_AnalyzeNode_Handler(srv interface{}, ctx context.Context, dec func(int
 var LLM_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "litrpc.LLM",
 	HandlerType: (*LLMServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "AnalyzeNode",
-			Handler:    _LLM_AnalyzeNode_Handler,
+			StreamName:    "AnalyzeNode",
+			Handler:       _LLM_AnalyzeNode_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "lit-llm.proto",
 }

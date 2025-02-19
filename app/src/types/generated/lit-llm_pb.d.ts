@@ -27,6 +27,9 @@ export class AnalyzeNodeResponse extends jspb.Message {
   getAnalysis(): string;
   setAnalysis(value: string): void;
 
+  getDone(): boolean;
+  setDone(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AnalyzeNodeResponse.AsObject;
   static toObject(includeInstance: boolean, msg: AnalyzeNodeResponse): AnalyzeNodeResponse.AsObject;
@@ -40,6 +43,7 @@ export class AnalyzeNodeResponse extends jspb.Message {
 export namespace AnalyzeNodeResponse {
   export type AsObject = {
     analysis: string,
+    done: boolean,
   }
 }
 

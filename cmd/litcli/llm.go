@@ -53,12 +53,30 @@ var analyzeNodeCommand = cli.Command{
 			Query: query,
 		}
 
-		resp, err := client.AnalyzeNode(ctx, req)
+		stream, err := client.AnalyzeNode(ctx, req)
 		if err != nil {
 			return err
 		}
 
-		printRespJSON(resp)
-		return nil
+		// Process streaming responses
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				// Check if we've reached the end of the stream
+				if err.Error() == "EOF" {
+					return nil
+				}
+				return err
+			}
+
+			// Print the analysis chunk
+			fmt.Print(resp.Analysis)
+
+			// If this is the final chunk, we're done
+			if resp.Done {
+				fmt.Println() // Add newline at the end
+				return nil
+			}
+		}
 	},
 }

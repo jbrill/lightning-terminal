@@ -8,7 +8,11 @@ import (
 type Analysis struct {
     Content string         `json:"content"`  // Free-form analysis text
     Data    map[string]any `json:"data"`    // Optional structured data
+    Done    bool          `json:"done"`     // Indicates if this is the final chunk
 }
+
+// AnalysisCallback is a function that receives streaming analysis updates
+type AnalysisCallback func(*Analysis) error
 
 // Add new types for enhanced data collection
 type ChannelStats struct {

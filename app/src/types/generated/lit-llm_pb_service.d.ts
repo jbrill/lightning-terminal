@@ -8,7 +8,7 @@ type LLMAnalyzeNode = {
   readonly methodName: string;
   readonly service: typeof LLM;
   readonly requestStream: false;
-  readonly responseStream: false;
+  readonly responseStream: true;
   readonly requestType: typeof lit_llm_pb.AnalyzeNodeRequest;
   readonly responseType: typeof lit_llm_pb.AnalyzeNodeResponse;
 };
@@ -50,14 +50,6 @@ export class LLMClient {
   readonly serviceHost: string;
 
   constructor(serviceHost: string, options?: grpc.RpcOptions);
-  analyzeNode(
-    requestMessage: lit_llm_pb.AnalyzeNodeRequest,
-    metadata: grpc.Metadata,
-    callback: (error: ServiceError|null, responseMessage: lit_llm_pb.AnalyzeNodeResponse|null) => void
-  ): UnaryResponse;
-  analyzeNode(
-    requestMessage: lit_llm_pb.AnalyzeNodeRequest,
-    callback: (error: ServiceError|null, responseMessage: lit_llm_pb.AnalyzeNodeResponse|null) => void
-  ): UnaryResponse;
+  analyzeNode(requestMessage: lit_llm_pb.AnalyzeNodeRequest, metadata?: grpc.Metadata): ResponseStream<lit_llm_pb.AnalyzeNodeResponse>;
 }
 

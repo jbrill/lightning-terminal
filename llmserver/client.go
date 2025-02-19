@@ -28,9 +28,12 @@ func NewClient(cfg *Config) (*Client, error) {
     }, nil
 }
 
-func (c *Client) AnalyzeNodeData(ctx context.Context, query string, data *NodeData) (*Analysis, error) {
+// AnalyzeNodeData performs streaming analysis of node data
+func (c *Client) AnalyzeNodeData(ctx context.Context, query string,
+    data *NodeData, cb AnalysisCallback) error {
+
     if data == nil {
-        return nil, fmt.Errorf("node data is nil")
+        return fmt.Errorf("node data is nil")
     }
 
     log.Debugf("Starting node analysis with query: %s", query)
@@ -40,11 +43,11 @@ func (c *Client) AnalyzeNodeData(ctx context.Context, query string, data *NodeDa
     req := &api.GenerateRequest{
         Model:  c.cfg.ModelName,
         Prompt: fmt.Sprintf("%s\n\nUser Query: %s", summary, query),
-        Stream: ptr(false),
+        Stream: ptr(true),  // Enable streaming
         Options: map[string]interface{}{
             "temperature":     0.7,
             "top_p":          0.9,
-            "num_predict":    2048,
+            "num_predict":    250,
             "repeat_penalty": 1.1,
         },
     }
@@ -52,34 +55,29 @@ func (c *Client) AnalyzeNodeData(ctx context.Context, query string, data *NodeDa
     log.Debugf("Sending request to model %s with prompt:\n%s",
         c.cfg.ModelName, req.Prompt)
 
-    var analysisText strings.Builder
     err := c.ollama.Generate(ctx, req, func(resp api.GenerateResponse) error {
         if resp.Response != "" {
             log.Debugf("Received response chunk: %q", resp.Response)
-            analysisText.WriteString(resp.Response)
+
+            // Send partial analysis to callback
+            analysis := &Analysis{
+                Content: resp.Response,
+                Data:    extractMetrics(data),
+                Done:    resp.Done,
+            }
+            if err := cb(analysis); err != nil {
+                return err
+            }
         }
         return nil
     })
 
     if err != nil {
         log.Errorf("Analysis generation failed: %v", err)
-        return nil, fmt.Errorf("generate analysis: %w", err)
+        return fmt.Errorf("generate analysis: %w", err)
     }
 
-    content := analysisText.String()
-    if content == "" {
-        log.Errorf("Empty response from model")
-        return nil, fmt.Errorf("empty response from model")
-    }
-
-    analysis := &Analysis{
-        Content: content,
-        Data:    extractMetrics(data),
-    }
-
-    log.Debugf("Analysis completed successfully (length: %d):\n%s",
-        len(analysis.Content), analysis.Content)
-    return analysis, nil
+    return nil
 }
 
 func formatNodeSummary(data *NodeData) string {

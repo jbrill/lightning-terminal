@@ -196,18 +196,22 @@ func (m *Manager) checkDependencies(ctx context.Context, cfg *Config) error {
 }
 
 // AnalyzeNode implements the LLM.AnalyzeNode RPC.
-func (s *Server) AnalyzeNode(ctx context.Context,
-	req *litrpc.AnalyzeNodeRequest) (*litrpc.AnalyzeNodeResponse, error) {
+func (s *Server) AnalyzeNode(req *litrpc.AnalyzeNodeRequest,
+	stream litrpc.LLM_AnalyzeNodeServer) error {
 
 	// Check if server is disabled
 	if s.cfg.Disable {
-		return nil, fmt.Errorf("LLM server is disabled, model not available")
+		return fmt.Errorf("LLM server is disabled, model not available")
 	}
 
 	if !s.ready.Load() {
 		log.Errorf("LLM server not ready")
-		return nil, fmt.Errorf("LLM server not ready")
+		return fmt.Errorf("LLM server not ready")
 	}
+
+	// Create a new context with extended timeout for streaming
+	ctx, cancel := context.WithTimeout(stream.Context(), s.cfg.Timeout)
+	defer cancel()
 
 	log.Infof("Analyzing node with query: %s", req.Query)
 
@@ -216,22 +220,36 @@ func (s *Server) AnalyzeNode(ctx context.Context,
 	nodeData, err := s.collector.CollectNodeData(ctx)
 	if err != nil {
 		log.Errorf("Error collecting node data: %v", err)
-		return nil, fmt.Errorf("error collecting node data: %w", err)
+		return fmt.Errorf("error collecting node data: %w", err)
 	}
 	log.Debugf("Node data collected successfully")
 
-	// Run analysis through LLM service.
+	// Create streaming callback with heartbeat
+	callback := func(analysis *Analysis) error {
+		// Send periodic heartbeat to keep connection alive
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			resp := &litrpc.AnalyzeNodeResponse{
+				Analysis: analysis.Content,
+				Done:     analysis.Done,
+			}
+			return stream.Send(resp)
+		}
+	}
+
+	// Run streaming analysis
 	log.Debugf("Running LLM analysis...")
-	analysis, err := s.client.AnalyzeNodeData(ctx, req.Query, nodeData)
-	if err != nil {
+	if err := s.client.AnalyzeNodeData(ctx, req.Query, nodeData, callback); err != nil {
+		if err == context.DeadlineExceeded {
+			log.Errorf("Analysis timed out after %v", s.cfg.Timeout)
+			return fmt.Errorf("analysis timed out after %v", s.cfg.Timeout)
+		}
 		log.Errorf("Error running analysis: %v", err)
-		return nil, err
+		return err
 	}
 	log.Debugf("Analysis completed successfully")
 
-	// Convert to RPC response.
-	resp := ConvertAnalysis(analysis)
-	log.Infof("Analysis completed: %d chars in response", len(resp.Analysis))
-
-	return resp, nil
+	return nil
 }

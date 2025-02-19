@@ -7,3 +7,6 @@ http:
     - selector: litrpc.LLM.AnalyzeNode
       post: "/v1/llm/analyze"
       body: "*"
+      response_body: "*"
+      additional_bindings:
+        - post: "/v1/llm/analyze/stream"  # Add streaming endpoint
