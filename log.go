@@ -10,6 +10,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/db"
 	"github.com/lightninglabs/lightning-terminal/firewall"
 	"github.com/lightninglabs/lightning-terminal/firewalldb"
+	"github.com/lightninglabs/lightning-terminal/llmserver"
 	mid "github.com/lightninglabs/lightning-terminal/rpcmiddleware"
 	"github.com/lightninglabs/lightning-terminal/rules"
 	"github.com/lightninglabs/lightning-terminal/session"
@@ -86,6 +87,7 @@ func SetupLoggers(root *build.RotatingLogWriter, intercept signal.Interceptor) {
 		root, autopilotserver.Subsystem, intercept,
 		autopilotserver.UseLogger,
 	)
+	lnd.AddSubLogger(root, llmserver.Subsystem, intercept, llmserver.UseLogger)
 	lnd.AddSubLogger(root, status.Subsystem, intercept, status.UseLogger)
 	lnd.AddSubLogger(
 		root, subservers.Subsystem, intercept, subservers.UseLogger,

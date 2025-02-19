@@ -1,0 +1,9 @@
+type: google.api.Service
+config_version: 3
+
+http:
+  rules:
+    # lit-llm.proto
+    - selector: litrpc.LLM.AnalyzeNode
+      post: "/v1/llm/analyze"
+      body: "*"

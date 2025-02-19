@@ -16,7 +16,7 @@ GOIMPORTS_BIN := $(GO_BIN)/gosimports
 
 COMMIT := $(shell git describe --abbrev=40 --dirty --tags)
 COMMIT_HASH := $(shell git rev-parse HEAD)
-PUBLIC_URL := 
+PUBLIC_URL :=
 
 # GO_VERSION is the Go version used for the release build, docker files, and
 # GitHub Actions. This is the reference version for the project. All other Go
@@ -179,7 +179,7 @@ docker-release: docker-app-build
 
 	# Run the actual compilation inside the docker image. We pass in all flags
 	# that we might want to overwrite in manual tests.
-	$(DOCKER_RELEASE_HELPER) make go-release tag="$(tag)" sys="$(sys)" COMMIT="$(COMMIT)" 
+	$(DOCKER_RELEASE_HELPER) make go-release tag="$(tag)" sys="$(sys)" COMMIT="$(COMMIT)"
 
 docker-tools:
 	@$(call print, "Building tools docker image.")

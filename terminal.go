@@ -33,6 +33,7 @@ import (
 	"github.com/lightninglabs/lightning-terminal/session"
 	"github.com/lightninglabs/lightning-terminal/status"
 	"github.com/lightninglabs/lightning-terminal/subservers"
+	"github.com/lightninglabs/lightning-terminal/llmserver"
 	"github.com/lightninglabs/lndclient"
 	taprootassets "github.com/lightninglabs/taproot-assets"
 	"github.com/lightningnetwork/lnd"
@@ -81,11 +82,11 @@ const (
 	// LND to be fully started.
 	lndWalletReadyStatus = "Wallet Ready"
 
-	defaultServerTimeout  = 10 * time.Second
-	defaultConnectTimeout = 15 * time.Second
+	defaultServerTimeout  = 60 * time.Second
+	defaultConnectTimeout = 90 * time.Second
 	defaultRPCTimeout     = 3 * time.Minute
-	minimumRPCTimeout     = 30 * time.Second
-	defaultStartupTimeout = 5 * time.Second
+	minimumRPCTimeout     = 120 * time.Second
+	defaultStartupTimeout = 30 * time.Second
 )
 
 // restRegistration is a function type that represents a REST proxy
@@ -226,6 +227,8 @@ type LightningTerminal struct {
 
 	restHandler http.Handler
 	restCancel  func()
+
+	llmServer *llmserver.Server
 }
 
 // New creates a new instance of the lightning-terminal daemon.
@@ -791,6 +794,22 @@ func (g *LightningTerminal) start(ctx context.Context) error {
 	return nil
 }
 
+// waitForLNDClient waits until we have a valid LND client connection
+func (g *LightningTerminal) waitForLNDClient(ctx context.Context) error {
+	// Wait for LND client to be ready
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for LND client")
+		default:
+			if g.lndClient != nil && g.lndClient.Client != nil {
+				return nil
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
 // basicLNDClient provides access to LiT's basicClient if it has been set.
 func (g *LightningTerminal) basicLNDClient() (lnrpc.LightningClient, error) {
 	if !g.basicClientSet.Load() {
@@ -1072,6 +1091,26 @@ func (g *LightningTerminal) startInternalSubServers(ctx context.Context,
 		closeAccountService()
 	}
 
+	log.Infof("Starting LLM server")
+	if !g.cfg.LLM.Disable {
+		llmConfig := &llmserver.Config{
+			OllamaURL: g.cfg.LLM.Host,
+			ModelName: g.cfg.LLM.Model,
+			HTTPClient: &http.Client{
+				Timeout: defaultConnectTimeout,
+			},
+		}
+		g.llmServer, err = llmserver.NewServer(llmConfig, g.lndClient.Client)
+		if err != nil {
+			return fmt.Errorf("error creating llm server: %w", err)
+		}
+		if err := g.llmServer.Start(ctx); err != nil {
+			return fmt.Errorf("error starting llm server: %w", err)
+		}
+
+		litrpc.RegisterLLMServer(g.rpcProxy.grpcServer, g.llmServer)
+	}
+
 	requestLogger, err := firewall.NewRequestLogger(
 		g.cfg.Firewall.RequestLogger, g.firewallDB,
 	)
@@ -1164,6 +1203,11 @@ func (g *LightningTerminal) registerSubDaemonGrpcServers(server *grpc.Server,
 			)
 		}
 	}
+
+	if !g.cfg.LLM.Disable {
+		litrpc.RegisterLLMServer(server, g.llmServer)
+	}
+
 
 	litrpc.RegisterFirewallServer(server, g.sessionRpcServer)
 
@@ -1406,6 +1450,13 @@ func (g *LightningTerminal) shutdownSubServers() error {
 		g.autopilotClient.Stop()
 	}
 
+	if g.llmServer != nil {
+		if err := g.llmServer.Stop(); err != nil {
+		    log.Errorf("Error stopping LLM server: %v", err)
+		    returnErr = err
+		}
+	}
+
 	if g.sessionRpcServerStarted {
 		if err := g.sessionRpcServer.stop(); err != nil {
 			log.Errorf("Error closing session DB: %v", err)
@@ -1482,6 +1533,13 @@ func (g *LightningTerminal) shutdownSubServers() error {
 	if g.httpServer != nil {
 		if err := g.httpServer.Close(); err != nil {
 			log.Errorf("Error stopping UI server: %v", err)
+			returnErr = err
+		}
+	}
+
+	if g.llmServer != nil {
+		if err := g.llmServer.Stop(); err != nil {
+			log.Errorf("Error stopping LLM server: %v", err)
 			returnErr = err
 		}
 	}

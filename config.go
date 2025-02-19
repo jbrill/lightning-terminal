@@ -89,6 +89,12 @@ const (
 	DefaultMacaroonFilename = "lit.macaroon"
 
 	defaultFirstLNCConnTimeout = 10 * time.Minute
+
+	// DefaultOllamaURL is the default URL for the Ollama server.
+	DefaultOllamaURL = "http://host.docker.internal:11434"
+
+	// DefaultModelName is the default model name to use.
+	DefaultModelName = "lit-analysis"
 )
 
 var (
@@ -143,6 +149,13 @@ var (
 		DefaultLitDir, DefaultNetwork, DefaultMacaroonFilename,
 	)
 )
+
+// LLMConfig is the configuration struct for the LLM integration.
+type LLMConfig struct {
+	Host    string `long:"host" description:"Host:port of the Ollama server"`
+	Model   string `long:"model" description:"Name of the model to use for analysis"`
+	Disable bool   `long:"disable" description:"Disable the LLM integration"`
+}
 
 // Config is the main configuration struct of lightning-terminal. It contains
 // all config items of its enveloping subservers, each prefixed with their
@@ -235,6 +248,8 @@ type Config struct {
 	// over an in-memory connection on startup. This is only set in
 	// integrated lnd mode.
 	lndAdminMacaroon []byte
+
+	LLM *LLMConfig `group:"LLM options" namespace:"llm"`
 }
 
 // lndConnectParams returns the connection parameters to connect to the local
@@ -337,6 +352,11 @@ func defaultConfig() *Config {
 		},
 		Firewall: firewall.DefaultConfig(),
 		Accounts: &accounts.Config{},
+		LLM: &LLMConfig{
+			Host:    DefaultOllamaURL,
+			Model:   DefaultModelName,
+			Disable: false,
+		},
 	}
 }
 
@@ -566,6 +586,18 @@ func loadAndValidateConfig(interceptor signal.Interceptor) (*Config, error) {
 			tlsCertPath := cfg.TaprootAssets.RpcConf.TLSCertPath
 
 			cfg.Remote.TaprootAssets.TLSCertPath = tlsCertPath
+		}
+	}
+
+	// Validate LLM config
+	if cfg.LLM != nil && !cfg.LLM.Disable {
+		if cfg.LLM.Host == "" {
+			return nil, fmt.Errorf("llm.host is required when LLM " +
+				"integration is enabled")
+		}
+		if cfg.LLM.Model == "" {
+			return nil, fmt.Errorf("llm.model is required when LLM " +
+				"integration is enabled")
 		}
 	}
 

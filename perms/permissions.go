@@ -98,6 +98,7 @@ var (
 		// The Status service must be available at all times, even
 		// before we can check macaroons, so we whitelist it.
 		"/litrpc.Status/SubServerStatus": {},
+		"/litrpc.LLM/AnalyzeNode": {},
 	}
 
 	// lndSubServerNameToTag is a map from the name of an LND subserver to

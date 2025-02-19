@@ -701,8 +701,8 @@ func (p *rpcProxy) convertSuperMacaroon(ctx context.Context, macHex string,
 // checkSubSystemStarted checks if the subsystem responsible for handling the
 // given URI has started.
 func (p *rpcProxy) checkSubSystemStarted(requestURI string) error {
-	// A request to Lit's status and proxy services is always allowed.
-	if isStatusReq(requestURI) || isProxyReq(requestURI) {
+	// A request to Lit's status, proxy, and LLM services is always allowed.
+	if isStatusReq(requestURI) || isProxyReq(requestURI) || isLLMReq(requestURI) {
 		return nil
 	}
 
@@ -786,6 +786,16 @@ func isStatusReq(uri string) bool {
 func isProxyReq(uri string) bool {
 	return strings.HasPrefix(
 		uri, fmt.Sprintf("/%s", litrpc.Proxy_ServiceDesc.ServiceName),
+	)
+}
+
+// isLLMReq returns true if the given request is intended for the
+// litrpc.LLM service.
+func isLLMReq(uri string) bool {
+	return strings.HasPrefix(
+		uri, fmt.Sprintf(
+			"/%s", litrpc.LLM_ServiceDesc.ServiceName,
+		),
 	)
 }
 
