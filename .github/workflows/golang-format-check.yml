@@ -1,0 +1,216 @@
+name: Go Code Format Check
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        required: false
+        default: '1.23.6'
+        type: string
+        description: 'Go version to use'
+      base-branch:
+        required: false
+        default: 'master'
+        type: string
+        description: 'Branch to compare PR against'
+      line-length:
+        required: false
+        default: 80
+        type: number
+        description: 'Maximum line length'
+      tab-width:
+        required: false
+        default: 8
+        type: number
+        description: 'Tab width in spaces'
+    secrets:
+      OPENAI_API_KEY:
+        required: true
+
+jobs:
+  format-check:
+    name: Check Go Code Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          check-latest: true
+
+      - name: Fetch base branch
+        run: |
+          git remote add upstream https://github.com/${{ github.repository }}
+          git fetch upstream ${{ inputs.base-branch }}
+
+      - name: Get changed Go files
+        id: changed-files
+        run: |
+          echo "files=$(git diff --name-only --diff-filter=ACMRT upstream/${{ inputs.base-branch }}...HEAD | grep '\.go$' | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Create LLM-friendly diff for review
+        if: steps.changed-files.outputs.files != ''
+        id: get-diff
+        run: |
+          # Generate full diff for review
+          git diff upstream/${{ inputs.base-branch }}...HEAD -- ${{ steps.changed-files.outputs.files }} > pr_diff.txt
+
+          # Get file content for context
+          mkdir -p file_contents
+          for file in ${{ steps.changed-files.outputs.files }}; do
+            if [[ -f "$file" ]]; then
+              cp "$file" file_contents/
+            fi
+          done
+
+          # Fetch LND formatting guidelines
+          curl -s https://raw.githubusercontent.com/lightningnetwork/lnd/master/docs/code_formatting_rules.md > lnd_format_guide.md
+
+          # Compress to avoid API size limitations
+          tar -czf code_context.tar.gz file_contents pr_diff.txt lnd_format_guide.md
+          echo "diff_ready=true" >> $GITHUB_OUTPUT
+
+      - name: LLM Code Format Check
+        if: steps.get-diff.outputs.diff_ready == 'true'
+        id: llm-review
+        run: |
+          # Install LLM API client
+          pip install openai
+
+          # Create Python script for LLM review
+          cat > llm_format_check.py << 'EOF'
+          import os
+          import sys
+          import openai
+          import json
+          import tarfile
+          import tempfile
+          from pathlib import Path
+
+          # Configure OpenAI client
+          openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+          # Extract code context
+          with tempfile.TemporaryDirectory() as tmpdir:
+              with tarfile.open("code_context.tar.gz", "r:gz") as tar:
+                  tar.extractall(path=tmpdir)
+
+              # Read diff
+              with open(os.path.join(tmpdir, "pr_diff.txt"), "r") as f:
+                  diff_content = f.read()
+
+              # Read files for context
+              file_context = {}
+              files_dir = os.path.join(tmpdir, "file_contents")
+              for file_path in Path(files_dir).glob("**/*.go"):
+                  with open(file_path, "r") as f:
+                      file_context[str(file_path.relative_to(files_dir))] = f.read()
+
+              # Read the formatting guide
+              with open(os.path.join(tmpdir, "lnd_format_guide.md"), "r") as f:
+                  lnd_format_guide = f.read()
+
+          # Prepare message for LLM
+          messages = [
+              {"role": "system", "content": f"You are an expert Go code reviewer focused on code formatting according to the Lightning Network Daemon (LND) guidelines. Your task is to review code and identify formatting issues based on the full LND formatting guidelines below:\n\n{lnd_format_guide}"},
+              {"role": "user", "content": f"Review the following code diff for LND formatting issues. Point out specific violations of the LND formatting guidelines, explain why they're issues, and provide correct formatting examples. Be thorough and comprehensive, but focus only on changes visible in the diff. If you find issues, provide the proper formatting for each according to LND guidelines.\n\n```diff\n{diff_content}\n```"}
+          ]
+
+          # Call LLM for review
+          try:
+              response = openai.chat.completions.create(
+                  model="gpt-4-turbo",
+                  messages=messages,
+                  temperature=0.1,
+                  max_tokens=4000
+              )
+
+              review = response.choices[0].message.content
+
+              # Check if any issues were found
+              has_issues = not any(indicator in review.lower() for indicator in
+                                  ["no formatting issues", "follows all", "adheres to all",
+                                   "complies with all", "no violations", "properly formatted"])
+
+              # Output review to file
+              with open("llm_review.md", "w") as f:
+                  f.write("# LND Formatting Review\n\n")
+                  f.write(review)
+
+              # Write status to GitHub outputs
+              with open(os.environ.get("GITHUB_OUTPUT", "output.txt"), "a") as f:
+                  f.write(f"has_issues={str(has_issues).lower()}\n")
+                  f.write(f"review_summary<<EOF\n{review[:500]}...\nEOF\n")
+
+              # Exit with error if issues were found
+              if has_issues:
+                  print("LND formatting issues found. See review for details.")
+                  sys.exit(1)
+              else:
+                  print("No formatting issues detected!")
+                  sys.exit(0)
+
+          except Exception as e:
+              print(f"Error during LLM review: {e}")
+              with open("llm_error.log", "w") as f:
+                  f.write(str(e))
+              sys.exit(1)
+          EOF
+
+          # Run LLM format check script
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} python llm_format_check.py
+          status=$?
+
+          # Always make review available regardless of exit status
+          echo "review_available=true" >> $GITHUB_OUTPUT
+          exit $status
+
+      - name: Generate PR Comment
+        if: steps.llm-review.outputs.review_available == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const reviewContent = fs.readFileSync('llm_review.md', 'utf8');
+
+            // Get PR number from context
+            const prNumber = context.payload.pull_request ? context.payload.pull_request.number : null;
+
+            if (prNumber) {
+              // Add comment to PR
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: reviewContent
+              });
+
+              console.log('Added LLM review comment to PR');
+            } else {
+              console.log('Not a PR event, skipping comment creation');
+            }
+
+      - name: Generate report
+        run: |
+          if [ -f "llm_review.md" ]; then
+            echo "## LND Formatting Review" > $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat llm_review.md >> $GITHUB_STEP_SUMMARY
+          elif [ -f "llm_error.log" ]; then
+            echo "## Error in LLM Code Review" > $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "An error occurred during the LLM code review:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "```" >> $GITHUB_STEP_SUMMARY
+            cat llm_error.log >> $GITHUB_STEP_SUMMARY
+            echo "```" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## LLM Review Not Available" > $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No LLM review was generated." >> $GITHUB_STEP_SUMMARY
+          fi

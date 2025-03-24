@@ -1,0 +1,21 @@
+name: Go Code Format Check
+
+on:
+  pull_request:
+    branches:
+      - "*"
+    paths:
+      - "**.go"
+      - ".github/workflows/format-check.yml"
+
+jobs:
+  check-formatting:
+    name: Check Go Code Formatting
+    uses: ./.github/workflows/golang-format-check.yml
+    with:
+      go-version: '1.23.6'
+      base-branch: 'master'
+      line-length: 80
+      tab-width: 8
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
